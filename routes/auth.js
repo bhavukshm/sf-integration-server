@@ -150,6 +150,7 @@ function homePage(base) {
     { path: '/api/nc/jwt-exchange/data',      label: 'Named Cred — JWT Token Exchange' },
     { path: '/api/nc/oauth/info',             label: 'Named Cred — OAuth 2.0 (setup info)' },
     { path: '/api/v1/secure-data',            label: 'Legacy Named Cred — API key' },
+    { path: '/api/faqs',                      label: 'FAQ API — simple API-key auth' },
     { path: '/api/v2/products',               label: 'OAuth resource (Bearer token)' },
     { path: '/authorize/client-creds-flow',   label: 'Connected App — Client Credentials' },
     { path: '/authorize/web-server-flow',     label: 'Connected App — Web Server (PKCE)' },

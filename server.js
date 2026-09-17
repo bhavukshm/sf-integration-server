@@ -56,6 +56,8 @@ const PUBLIC_PATHS = new Set([
   '/api/nc/oauth/info',
   // MCP server (AI agents → this server)
   '/api/mcp',
+  // FAQ API (simple API-key auth)
+  '/api/faqs',
 ]);
 
 // Path prefixes for public routes with a dynamic segment (exact-match Set
@@ -78,6 +80,7 @@ app.use('/', require('./routes/oauth'));
 app.use('/', require('./routes/namedCredentials'));
 app.use('/', require('./routes/connectedApp'));
 app.use('/', require('./routes/mcp'));
+app.use('/', require('./routes/faq'));
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found', path: req.path });
