@@ -193,32 +193,25 @@ router.get('/api/kb/images/:id', (req, res) => {
   res.send(buildPlaceholderSvg(resolution));
 });
 
-// ── Bearer-token guard ───────────────────────────────────────────────────────
-// MCP clients (Claude Desktop/Code, MCP Inspector, an Agentforce action, etc.)
-// configure a plain Authorization header — there's no browser session here,
-// so this is intentionally independent of the site-login cookie (see
-// PUBLIC_PATHS in server.js).
-function requireMcpAuth(req, res, next) {
-  const authHeader = req.headers['authorization'] ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+// ── Custom-header guard (checked inside the tool, not as route middleware) ──
+// initialize/tools/list reach the server unauthenticated — MCP has no notion
+// of "login" at the protocol layer, so there's nothing to gate before a tool
+// actually runs. Auth is enforced at the point where it matters: the tool
+// handler reads the raw request header via `extra.requestInfo.headers`
+// (populated by StreamableHTTPServerTransport per-request) and throws if it's
+// missing/wrong. The SDK catches thrown errors from a tool callback and turns
+// them into a normal CallToolResult with isError: true — no HTTP-level 401,
+// the JSON-RPC call itself still "succeeds" but reports a tool-level failure.
+function checkMcpAuth(headers) {
+  const provided = headers?.['x-mcp-api-key'];
 
-  if (!token) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      reason: 'Missing Authorization: Bearer <token> header.',
-      hint: 'Configure your MCP client with Authorization: Bearer <MCP_API_KEY>.',
-    });
+  if (!provided) {
+    throw new Error('Missing X-MCP-API-KEY header. Configure your MCP client to send X-MCP-API-KEY: <MCP_API_KEY>.');
   }
 
-  if (!safeEqual(token, MCP_API_KEY)) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      reason: 'Bearer token is invalid.',
-      hint: 'Token must match MCP_API_KEY in .env.',
-    });
+  if (!safeEqual(provided, MCP_API_KEY)) {
+    throw new Error('X-MCP-API-KEY header is invalid. Value must match MCP_API_KEY in .env.');
   }
-
-  next();
 }
 
 // ── MCP server ───────────────────────────────────────────────────────────────
@@ -241,8 +234,30 @@ function buildMcpServer(baseUrl) {
         singlePageRecordCount: z.number().int().min(1).max(50).optional().describe('Records per page. Maps to the real server\'s "single-page-record-count". Default 5.'),
         includeImages: z.boolean().optional().describe('If true, also inline each result\'s image as a base64 MCP image content block, in addition to the imageUrl field.'),
       },
+      // Declared up front (shows up in tools/list) and enforced at runtime —
+      // the SDK validates our returned structuredContent against this and
+      // throws a protocol-level error if we ever drift from this shape.
+      outputSchema: {
+        pagination: z.object({
+          startingPage: z.number(),
+          endingPage: z.number(),
+          singlePageRecordCount: z.number(),
+          totalRecords: z.number(),
+          totalPages: z.number(),
+        }),
+        results: z.array(z.object({
+          id: z.string(),
+          title: z.string(),
+          summary: z.string(),
+          sourceUrl: z.string(),
+          relevanceScore: z.number(),
+          imageUrl: z.string(),
+        })),
+      },
     },
-    async ({ query, startingPage, endingPage, singlePageRecordCount, includeImages }) => {
+    async ({ query, startingPage, endingPage, singlePageRecordCount, includeImages }, extra) => {
+      checkMcpAuth(extra.requestInfo?.headers);
+
       const effectiveStart = startingPage ?? 1;
       const { results, pagination } = searchResolutions({
         query,
@@ -276,22 +291,29 @@ function buildMcpServer(baseUrl) {
 
 // ── Scenario: MCP Server (case-resolution knowledge base tool) ─────────────
 // Practice: point an MCP client at this server and call search_case_resolutions.
+// initialize and tools/list are unauthenticated (nothing to check them against —
+// see checkMcpAuth above); the X-MCP-API-KEY header is only required on the
+// actual tools/call for search_case_resolutions.
 //
 // Test with the MCP Inspector:
 //   npx @modelcontextprotocol/inspector
 //   Transport: Streamable HTTP, URL: http://localhost:3000/api/mcp
-//   Header: Authorization: Bearer <MCP_API_KEY>
+//   (no auth header needed to connect/list tools — add X-MCP-API-KEY when calling the tool)
 //
 // Or configure Claude Desktop/Code's MCP settings with:
 //   { "type": "http", "url": "http://localhost:3000/api/mcp",
-//     "headers": { "Authorization": "Bearer <MCP_API_KEY>" } }
+//     "headers": { "X-MCP-API-KEY": "<MCP_API_KEY>" } }
 //
 // Raw curl for the initial handshake (a real client does this automatically):
 //   curl -X POST http://localhost:3000/api/mcp \
-//     -H "Authorization: Bearer mcp-practice-token-xyz789" \
 //     -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
 //     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
-// router.post('/api/mcp', requireMcpAuth, asyncHandler(async (req, res) => {
+//
+// Raw curl for a tool call, with the header the tool itself checks:
+//   curl -X POST http://localhost:3000/api/mcp \
+//     -H "X-MCP-API-KEY: mcp-practice-token-xyz789" \
+//     -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+//     -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_case_resolutions","arguments":{"query":"password reset"}}}'
 router.post('/api/mcp', asyncHandler(async (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   const server = buildMcpServer(baseUrl);
