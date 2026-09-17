@@ -112,6 +112,21 @@ const RESOLUTIONS = [
     sourceUrl: 'https://help.internal.example.com/kb/KB-1012',
     tags: ['bulk api', 'integration', 'rate limit', 'sync'],
   },
+  {
+    id: 'KB-1013',
+    title: "UNABLE_TO_LOCK_ROW: Unable to obtain exclusive access to record",
+    summary: "An enterprise customer user and background integration job encountered the UNABLE_TO_LOCK_ROW exception when attempting to update child records concurrently during peak business hours. The issue occurred because multiple parallel execution threads (Apex triggers and automated workflows) attempted to lock and update the same parent Account record simultaneously, exceeding the database wait timeout.",
+    sourceUrl: "[https://developer.salesforce.com/docs/atlas.en-us.apexcode.meta/apexcode/apex_transaction_locking.htm](https://www.google.com/search?q=https://developer.salesforce.com/docs/atlas.en-us.apexcode.meta/apexcode/apex_transaction_locking.htm)",
+    tags: [
+        "salesforce",
+        "unable-to-lock-row",
+        "record-locking",
+        "concurrency",
+        "apex",
+        "bulk-api",
+        "troubleshooting"
+     ]
+  }
 ];
 
 function searchResolutions({ query, startingPage = 1, endingPage = 1, singlePageRecordCount = 5, baseUrl = '' }) {
